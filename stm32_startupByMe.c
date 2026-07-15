@@ -224,6 +224,10 @@ void Default_Handler(void)
 }
 void Reset_Handler(void)
 {
+	// Enable FPU: set CP10 and CP11 to full access in CPACR
+	// Must be done before any FP instructions or main()
+	*((volatile uint32_t*)0xE000ED88U) |= (0xFUL << 20);
+
 	// Copy .data section from FLASH to SRAM (word copy)
 	uint32_t *pDst = (uint32_t *)&_sdata;
 	uint32_t *pSrc = (uint32_t *)&_loadaddrss_data;

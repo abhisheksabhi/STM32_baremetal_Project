@@ -31,8 +31,8 @@
 #define TASK_READY_STATE  0x00
 #define TASK_BLOCKED_STATE  0XFF
 
-#define INTERRUPT_DISABLE()  do{__asm volatile ("MOV R0,#0x1"); asm volatile("MSR PRIMASK,R0"); } while(0)
+#define INTERRUPT_DISABLE()  do{ __asm volatile ("CPSID I" ::: "memory"); } while(0)
 
-#define INTERRUPT_ENABLE()  do{__asm volatile ("MOV R0,#0x0"); asm volatile("MSR PRIMASK,R0"); } while(0)
+#define INTERRUPT_ENABLE()   do{ __asm volatile ("CPSIE I" ::: "memory"); } while(0)
 
 #endif /* MAIN_H_ */
