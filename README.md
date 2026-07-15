@@ -201,31 +201,35 @@ Flash the resulting `build/final.elf` with OpenOCD, ST-Link Utility, or your pre
 
 ## Known Issues
 
-### Compile error in `switch_sp_to_psp()` (`main.c`)
-
-There is a stray `e` in one inline asm statement:
-
-```c
-__asm volatile ("PUSH {LR}"e);   // <-- stray 'e', causes compile error
-```
-
-Fix:
-
-```c
-__asm volatile ("PUSH {LR}");
-```
-
 ### FPU not initialized
 
-The `#warning` at the top of `main.c` fires when compiling for hard-FP. Either initialize the FPU in `Reset_Handler` before calling `main()`, or use `-mfloat-abi=soft`.
+The `#warning` at the top of `main.c` fires when compiling for hard-FP (`__ARM_FP` defined). The FPU is never enabled before `main()` runs. Either initialize the FPU in `Reset_Handler` before calling `main()`:
+
+```c
+// In Reset_Handler, before main():
+// Enable FPU: set CP10 and CP11 full access in CPACR
+*((volatile uint32_t*)0xE000ED88) |= (0xF << 20);
+```
+
+Or suppress the warning by compiling with `-mfloat-abi=soft` (no FPU instructions emitted).
 
 ### INTERRUPT_DISABLE / INTERRUPT_ENABLE clobber R0
 
-The macros in `main.h` use `MOV R0` + `MSR PRIMASK` without declaring R0 as clobbered. A safer alternative:
+The macros in `main.h` use `MOV R0` + `MSR PRIMASK` without declaring R0 as clobbered, which can cause the compiler to incorrectly reuse R0 across the inline asm boundary:
 
 ```c
-__asm volatile ("CPSID I" ::: "memory");  // disable
-__asm volatile ("CPSIE I" ::: "memory");  // enable
+// Current (unsafe):
+#define INTERRUPT_DISABLE()  do{__asm volatile ("MOV R0,#0x1"); asm volatile("MSR PRIMASK,R0"); } while(0)
+#define INTERRUPT_ENABLE()   do{__asm volatile ("MOV R0,#0x0"); asm volatile("MSR PRIMASK,R0"); } while(0)
+```
+
+Two additional problems: the two `asm` statements are separate — the compiler is not guaranteed to keep them adjacent — and `asm volatile` (without double underscores) is a non-standard GCC extension that may warn under strict settings.
+
+Safer replacement using `CPSID`/`CPSIE`:
+
+```c
+#define INTERRUPT_DISABLE()  do{ __asm volatile ("CPSID I" ::: "memory"); } while(0)
+#define INTERRUPT_ENABLE()   do{ __asm volatile ("CPSIE I" ::: "memory"); } while(0)
 ```
 
 ---
