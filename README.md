@@ -64,11 +64,12 @@ Four user tasks blink four on-board LEDs (STM32F4-Discovery: PD12–PD15) at dif
 
 1. Vector table placed at `0x08000000` (`.isr_vector`) — first entry is `STACK_START`.
 2. `Reset_Handler` runs on power-on/reset:
+   - Enables FPU — sets CP10 and CP11 to full access in CPACR (`0xE000ED88`) before calling `main()`.
    - Copies `.data` initializers from FLASH (`_loadaddrss_data`) to SRAM (`_sdata`) — word-based copy (`uint32_t`), 4-byte alignment guaranteed by linker.
    - Zero-initializes `.bss` (`_sbss` to `_ebss`), word-based.
    - Calls `__libc_init_array()` for C runtime / C++ constructors.
    - Calls `main()`. If `main()` returns, loops forever.
-3. All IRQ handlers are weakly aliased to `Default_Handler` (infinite loop).  
+3. All IRQ handlers are weakly aliased to `Default_Handler` (infinite loop).
    Overridden in `main.c`: `HardFault_Handler`, `MemManage_Handler`, `BusFault_Handler`, `PendSV_Handler`, `SysTick_Handler`.
 
 ---
@@ -109,7 +110,7 @@ Four user tasks blink four on-board LEDs (STM32F4-Discovery: PD12–PD15) at dif
 
 ### `task_delay(tick_count)`
 
-Disables interrupts (PRIMASK), sets `block_count = g_tick_count + tick_count`, sets state to `TASK_BLOCKED_STATE`, pends PendSV, re-enables interrupts.
+Disables interrupts (PRIMASK via `CPSID I`), sets `block_count = g_tick_count + tick_count`, sets state to `TASK_BLOCKED_STATE`, pends PendSV, re-enables interrupts (`CPSIE I`).
 
 ---
 
@@ -199,28 +200,26 @@ Flash the resulting `build/final.elf` with OpenOCD, ST-Link Utility, or your pre
 
 ---
 
-## Known Issues
+## Changelog
 
-> **Both issues below have been fixed in the current codebase.**
+### v1.1 — Current
 
-### ~~FPU not initialized~~ — Fixed
-
+**FPU initialisation added**
 The FPU is now enabled in `Reset_Handler` (`stm32_startupByMe.c`) before `main()` is called, by setting CP10 and CP11 to full access in the CPACR register:
 
 ```c
 *((volatile uint32_t*)0xE000ED88U) |= (0xFUL << 20);
 ```
 
-The `#warning` guard in `main.c` no longer fires since `-mfloat-abi=soft` is the effective behavior with the current flags (no `-mfpu` specified).
-
-### ~~INTERRUPT_DISABLE / INTERRUPT_ENABLE clobber R0~~ — Fixed
-
-The macros in `main.h` have been replaced with `CPSID I` / `CPSIE I` — single atomic instructions that do not touch any general-purpose registers, with a `"memory"` barrier clobber to prevent compiler reordering:
+**Interrupt macros fixed**
+The `INTERRUPT_DISABLE` / `INTERRUPT_ENABLE` macros in `main.h` have been replaced with `CPSID I` / `CPSIE I` — single atomic instructions that do not touch any general-purpose registers, with a `"memory"` barrier clobber to prevent compiler reordering:
 
 ```c
 #define INTERRUPT_DISABLE()  do{ __asm volatile ("CPSID I" ::: "memory"); } while(0)
 #define INTERRUPT_ENABLE()   do{ __asm volatile ("CPSIE I" ::: "memory"); } while(0)
 ```
+
+### v1.0 — Initial release
 
 ---
 
@@ -232,3 +231,24 @@ The macros in `main.h` have been replaced with `CPSID I` / `CPSIE I` — single 
 | `stm32_startupByMe.c` | Current startup — word-based copy, `const` vector table, `noreturn` Reset_Handler, `_estack` from linker |
 | `main_log` | Build/debug log (not source code) |
 | `main.s` | Assembly listing output (not source code) |
+
+---
+
+## Related Projects
+
+- [ESP32 I2C Scanner](https://github.com/abhisheksabhi/esp32-i2c-scanner) — scans all 128 I2C addresses, reports responding devices by name — useful for multi-sensor bus bring-up
+- [GPS NMEA Reader](https://github.com/abhisheksabhi/GPS_NEMA_Read) — ESP32 UART-based raw NMEA sentence reader from NEO-6M GPS module
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.
+
+---
+
+## Author
+
+**Abhishek Shiruru**
+Senior Software Engineer — Embedded Systems
+[LinkedIn](https://linkedin.com/in/abhishek-acharya-876abi) | [GitHub](https://github.com/abhisheksabhi)
